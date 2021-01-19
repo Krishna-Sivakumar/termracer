@@ -1,16 +1,23 @@
+import sys
 import time
+import tty
+import termios
 from typing import List
 
 
+fd = sys.stdin.fileno()
+old_settings = termios.tcgetattr(fd)
+
+
 def enable_raw_mode():
-    pass
+    tty.setraw(fd)
 
 
 def disable_raw_mode():
-    pass
+    termios.tcsetattr(fd, termios.TCSAFLUSH, old_settings)
 
 
-def statistics(speeds List[int]):
+def statistics(speeds: List[int]):
     avg_speed = sum(speeds) / len(speeds)
     pass
 
@@ -24,4 +31,4 @@ while True:
     if input():
         break
 
-print(statistics(speeds))
+# print(statistics(speeds))
