@@ -37,19 +37,7 @@ def race_over(data):
 @server.event
 def force_stop(data):
     server.emit("stop_race", "", broadcast=True)
-
-
-'''
-@server.event
-def disconnect():
-    global players_online
-    players_online -= 1
-    if players_online == 0:
-        try:
-            server.stop()
-        except SystemExit:
-            print("f")
-'''
+    server.stop()
 
 
 def main():

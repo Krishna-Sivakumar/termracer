@@ -1,28 +1,37 @@
-import argparse
-import atexit
+'''
+    __author__: Krishna Sivakumar (krishnasivaprogrammer@gmail.com)
+    __description__: a CLI typeracer clone
+'''
+
+from argparse import ArgumentParser
+from atexit import register
 import curses
 from datetime import timedelta
-import prettytable
+from prettytable import PrettyTable, PLAIN_COLUMNS
 import recur
-import random
-import socketio
+from random import randint, choice
+from socketio.exceptions import ConnectionError
+from socketio import Client as WebSocketClient
 import server
-import time
+from time import time, sleep
 
 
 class Client:
-    def __init__(self, passage: str, window, socket):
+    def __init__(self, passage: str, socket: WebSocketClient = None):
         self.passage = passage
 
         self.socket = socket
-        self.window = window
         self.state = None
 
         self.total, self.errors = 0, 0
         self.last_correct_character = 0
         self.is_wrong = False
-        self.id = f"player{random.randint(1, 1000)}"
-        self.start = time.time()
+        self.id = f"player{randint(1, 1000)}"
+        self.start = time()
+
+        self.table = PrettyTable()
+        self.table.field_names = ["SPEED", "PROGRESS", "ACCURACY", "TIME ELAPSED", "ID"]
+        self.table.set_style(PLAIN_COLUMNS)
 
     def typeCharacter(self, char: str) -> bool:
         """
@@ -41,7 +50,7 @@ class Client:
 
         self.printStatus()
 
-        if self.socket.connected:
+        if self.socket is not None and self.socket.connected:
             self.socket.send(self.serialize())
 
         return self.isOver()
@@ -51,7 +60,7 @@ class Client:
             Returns current race statistics as a string.
         """
 
-        avg_time = time.time() - self.start
+        avg_time = time() - self.start
         avg_speed = int((self.total - self.errors) / avg_time * (60 / 5))
         return f"{avg_speed}WPM", f"{int(avg_time)}s"
 
@@ -59,10 +68,6 @@ class Client:
         """
             Prints the status of the current passage along with statistics.
         """
-
-        table = prettytable.PrettyTable()
-        table.field_names = ["SPEED", "PROGRESS", "ACCURACY", "TIME ELAPSED", "ID"]
-        table.set_style(prettytable.PLAIN_COLUMNS)
 
         def progress_bar(percentile) -> str:
             filling_character = "●"
@@ -72,7 +77,9 @@ class Client:
         speed, time_elapsed = self.statistics()
         acc = int((self.total-self.errors)*100/self.total) if self.total else 100
 
-        table.add_row(
+        self.table.clear_rows()
+
+        self.table.add_row(
             [
                 speed,
                 progress_bar(self.last_correct_character/len(self.passage)),
@@ -120,7 +127,7 @@ class Client:
             )
 
         row_counter = 2
-        for line in table.get_string().split("\n"):
+        for line in self.table.get_string().split("\n"):
             self.window.addstr(row_counter + offset, 0, "\t" + line)
             row_counter += 1
 
@@ -132,6 +139,31 @@ class Client:
             Returns true if the end of the passage has been reached.
         """
         return len(self.passage) == self.last_correct_character
+
+    def initWindow(self):
+        self.window = curses.initscr()
+
+        # sets cbreak and noecho modes to the terminal
+        curses.cbreak()
+        curses.noecho()
+        curses.curs_set(0)
+
+        # starts color configuration (I presume?)
+        curses.start_color()
+        curses.use_default_colors()
+        # Green text on the default background
+        curses.init_pair(1, curses.COLOR_GREEN, -1)
+        # Default text on a red background
+        curses.init_pair(2, -1, curses.COLOR_RED)
+        # Default text and background colors
+        curses.init_pair(3, -1, -1)
+
+        def reset_curses_settings():
+            curses.curs_set(1)
+            curses.echo()
+            curses.nocbreak()
+
+        register(reset_curses_settings)
 
     def serialize(self) -> str:
         return {
@@ -147,47 +179,37 @@ class Client:
         self.state = data
 
 
-# pass on instances to main()
-# get the result client and do stuff with it
+def getRandomLine():
+    from linecache import getline
+    from subprocess import run, PIPE
+    lines = run(["wc", "-l", "passages.txt"], check=True, stdout=PIPE).stdout
+    lines = int(lines.decode().split()[0])
+
+    return getline("passages.txt", randint(1, lines)).strip()
 
 
-def setupClient():
-    window = curses.initscr()
+def setupClient() -> Client:
     # Picking a random line from a file
     # The lines are cleaned up
+
+    '''
     try:
-        passage = random.choice(
+        passage = choice(
             [line.strip() for line in open("passages.txt", "r").read().split("\n") if line.strip()]
         )
     except IndexError:
         exit("Error: passages.txt must not be empty; include at least one line of text.\n")
+    '''
 
-    curses.cbreak()
-    curses.noecho()
-    curses.curs_set(0)
+    passage = getRandomLine()
+    client = Client(passage)
 
-    curses.start_color()
-    curses.use_default_colors()
-    # Green text on the default background
-    curses.init_pair(1, curses.COLOR_GREEN, -1)
-    # Default text on a red background
-    curses.init_pair(2, -1, curses.COLOR_RED)
-    # Default text and background colors
-    curses.init_pair(3, -1, -1)
-
-    def reset_curses_settings():
-        curses.curs_set(1)
-        curses.echo()
-        curses.nocbreak()
-
-    atexit.register(reset_curses_settings)
-
-    client = Client(passage, window, socketio.Client())
-
-    return window, client
+    # Return the instantiated client to play with
+    return client
 
 
-def main(window, client, client_socket=socketio.Client()):
+def main(client: Client, client_socket=WebSocketClient()):
+    client.socket = client_socket
     loop = recur.thread(timedelta(seconds=0.01), client.printStatus)
     loop.start()
 
@@ -202,11 +224,11 @@ def main(window, client, client_socket=socketio.Client()):
 
     while True:
         # Main loop
-        char = window.getkey()
+        char = client.window.getkey()
 
         if client.typeCharacter(char):
             if client.socket.connected:
-                client_socket.emit("race_over", client.id)
+                client.socket.emit("race_over", client.id)
             else:
                 stop_race()
             break
@@ -214,12 +236,13 @@ def main(window, client, client_socket=socketio.Client()):
         # if client.typeCharacter(char) or char == '\u0018':
         if char == '\u0018':
             if client.socket.connected:
-                client_socket.emit("force_stop", "")
+                client.socket.emit("force_stop", "")
             else:
                 stop_race()
             break
 
     client.printStatus()
+    return client
 
 
 def writeResults(client: Client):
@@ -239,48 +262,52 @@ def writeResults(client: Client):
 
 
 if __name__ == "__main__":
-    cmd_args = argparse.ArgumentParser()
+    cmd_args = ArgumentParser()
     cmd_args.add_argument("--practice", "-p", help="enter practice mode (default)", action="store_true")
     cmd_args.add_argument("--host", "-ho", help="host a multiplayer game", action="store_true")
     cmd_args.add_argument("--client", "-c", help="connect to a multiplayer game", action="store_true")
     cmd_args = cmd_args.parse_args()
 
     # initialize curses window and client instances
-    window, client = setupClient()
+    client = setupClient()
 
     if cmd_args.host:
         # Host mode; Setup a server to host the game
         srv = recur.runThread(server.main)
         srv.start()
 
-        client_socket = socketio.Client()
+        # Setup a client on the host's side
+        client_socket = WebSocketClient()
         client_socket.connect("http://127.0.0.1:5000")
         print("waiting for 1 player to connect...")
 
         @client_socket.event
         def start_game(data):
+            # Start the game when the server sends the signal to start.
             print("the game is starting in a second!")
-            time.sleep(1)
-            main(window, client, client_socket)
+            client.initWindow()
+            sleep(1)
+            main(client, client_socket)
 
     elif cmd_args.client:
         # Client mode; Connects to the host via websockets
-        client_socket = socketio.Client()
+        client_socket = Client()
         try:
             client_socket.connect("http://127.0.0.1:5000")
-        except Exception as E:
+        except ConnectionError:
             print("couldn't create a connection with the host.")
-            time.sleep(1)
-            main(window, client)
 
         @client_socket.event
         def start_game(data):
             print("the game is starting in a second!")
-            time.sleep(1)
-            main(window, client, client_socket)
+            client.initWindow()
+            sleep(1)
+            main(client, client_socket)
 
     else:
         # Practice mode
-        main(window, client)
+        client.initWindow()
+        client = main(client)
+        writeResults(client)
 
-    writeResults(client)
+    raise SystemExit

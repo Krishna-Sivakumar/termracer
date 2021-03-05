@@ -1,11 +1,11 @@
-import threading
+from threading import Thread, Event
 from datetime import timedelta
 
 
-class thread(threading.Thread):
+class thread(Thread):
     def __init__(self, interval: timedelta, callback):
-        threading.Thread.__init__(self)
-        self.stopped = threading.Event()
+        Thread.__init__(self)
+        self.stopped = Event()
         self.interval = interval
         self.callback = callback
 
@@ -18,9 +18,9 @@ class thread(threading.Thread):
             self.callback()
 
 
-class runThread(threading.Thread):
+class runThread(Thread):
     def __init__(self, callback):
-        threading.Thread.__init__(self)
+        Thread.__init__(self)
         self.callback = callback
 
     def stop(self):
