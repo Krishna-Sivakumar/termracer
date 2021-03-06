@@ -12,8 +12,11 @@ import recur
 from random import randint, choice
 from socketio.exceptions import ConnectionError
 from socketio import Client as WebSocketClient
-import server
 from time import time, sleep
+
+
+from os import path
+script_path = path.dirname(path.realpath(__file__))
 
 
 class Client:
@@ -90,7 +93,7 @@ class Client:
         )
 
         if self.state is not None:
-            table.add_row(
+            self.table.add_row(
                 [
                     self.state["speed"],
                     progress_bar(self.state["progress"]),
@@ -128,7 +131,7 @@ class Client:
 
         row_counter = 2
         for line in self.table.get_string().split("\n"):
-            self.window.addstr(row_counter + offset, 0, "\t" + line)
+            self.window.addstr(row_counter + offset, 0, "\t" + line[:width])
             row_counter += 1
 
         self.window.addstr(row_counter + 1 + offset, 0, "\n")
@@ -182,10 +185,10 @@ class Client:
 def getRandomLine():
     from linecache import getline
     from subprocess import run, PIPE
-    lines = run(["wc", "-l", "passages.txt"], check=True, stdout=PIPE).stdout
+    lines = run(["wc", "-l", path.join(script_path, "passages.txt")], check=True, stdout=PIPE).stdout
     lines = int(lines.decode().split()[0])
 
-    return getline("passages.txt", randint(1, lines)).strip()
+    return getline(path.join(script_path, "passages.txt"), randint(1, lines)).strip()
 
 
 def setupClient() -> Client:
@@ -249,9 +252,12 @@ def writeResults(client: Client):
     if not client.isOver():
         return
 
-    lines = open("tmp.dat", "r").read()
+    try:
+        lines = open(path.join(script_path, "tmp.dat"), "r").read()
+    except FileNotFoundError:
+        lines = ""
 
-    with open("tmp.dat", "w") as f:
+    with open(path.join(script_path, "tmp.dat"), "w") as f:
         line = [
             client.id,
             *client.statistics(),
@@ -273,6 +279,9 @@ if __name__ == "__main__":
 
     if cmd_args.host:
         # Host mode; Setup a server to host the game
+
+        import server
+
         srv = recur.runThread(server.main)
         srv.start()
 
@@ -291,7 +300,7 @@ if __name__ == "__main__":
 
     elif cmd_args.client:
         # Client mode; Connects to the host via websockets
-        client_socket = Client()
+        client_socket = WebSocketClient()
         try:
             client_socket.connect("http://127.0.0.1:5000")
         except ConnectionError:
