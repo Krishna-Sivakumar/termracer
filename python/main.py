@@ -270,6 +270,7 @@ def writeResults(client: Client):
 if __name__ == "__main__":
     cmd_args = ArgumentParser()
     cmd_args.add_argument("--practice", "-p", help="enter practice mode (default)", action="store_true")
+    cmd_args.add_argument("--history", "-hi", help="view race history", action="store_true")
     cmd_args.add_argument("--host", "-ho", help="host a multiplayer game", action="store_true")
     cmd_args.add_argument("--client", "-c", help="connect to a multiplayer game", action="store_true")
     cmd_args = cmd_args.parse_args()
@@ -312,6 +313,31 @@ if __name__ == "__main__":
             client.initWindow()
             sleep(1)
             main(client, client_socket)
+
+    elif cmd_args.history:
+        from subprocess import Popen, run, PIPE
+        from re import split
+        if path.exists(path.join(script_path, "tmp.dat")):
+            table = PrettyTable()
+            table.field_names = ["Player Name", "Speed", "Time Taken", "Accuracy", "Passage\n"]
+            table.align = "l"
+            table.set_style(PLAIN_COLUMNS)
+
+            speeds, previous_id = [], None
+
+            for line in reversed(open(path.join(script_path, "tmp.dat")).readlines()):
+                id, speed, tm, acc, ps = line.split("\t")
+                speeds.append(int(split("WPM$", speed)[0]))
+                if id == previous_id:
+                    table.add_row(["", speed, tm, acc, ps])
+                else:
+                    table.add_row([id, speed, tm, acc, ps])
+                previous_id = id
+
+            cat_process = Popen(["echo", f"Average Speed: {sum(speeds)//len(speeds)}WPM\n\n" + table.get_string()], stdout=PIPE)
+            run(["less", "-S"], stdin=cat_process.stdout)
+        else:
+            print("You haven't played any games yet.")
 
     else:
         # Practice mode
