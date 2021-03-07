@@ -271,12 +271,26 @@ if __name__ == "__main__":
     cmd_args = ArgumentParser()
     cmd_args.add_argument("--practice", "-p", help="enter practice mode (default)", action="store_true")
     cmd_args.add_argument("--history", "-hi", help="view race history", action="store_true")
+    cmd_args.add_argument("--name", help="set your username")
     cmd_args.add_argument("--host", "-ho", help="host a multiplayer game", action="store_true")
     cmd_args.add_argument("--client", "-c", help="connect to a multiplayer game", action="store_true")
     cmd_args = cmd_args.parse_args()
 
     # initialize curses window and client instances
     client = setupClient()
+
+    if cmd_args.name:
+        from json import dumps
+        client.id = cmd_args.name
+        open(path.join(script_path, "session.json"), "w").write(
+            dumps({"id": cmd_args.name})
+        )
+
+    else:
+        from json import loads, dumps
+        if path.exists(path.join(script_path, "session.json")):
+            session = loads(open(path.join(script_path, "session.json")).read())
+            client.id = session["id"]
 
     if cmd_args.host:
         # Host mode; Setup a server to host the game
