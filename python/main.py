@@ -21,10 +21,9 @@ class Client:
 
         self.state = None
 
-        self.total, self.errors = 0, 0
+        self.total, self.total_errors = 0, 0
         self.error_string = 0
         self.last_correct_character = 0
-        self.is_wrong = False
         self.id = f"player{randint(1, 1000)}"
         self.start = time()
 
@@ -34,40 +33,37 @@ class Client:
 
     def typeCharacter(self, char: str) -> bool:
         """
-            Checks the typed character w.r.t the passage.
-            Returns true if the end of the passage has been reached.
+            Enters a character into the passage,
+            and checks if the correct character has been entered.
+            Returns True if the end of the passage has been reached.
         """
 
+        # If CTRL X is pressed, finish the race by returning True
         if char == '\u0018':
-            # If ctrl + x is pressed, stop the race
             return True
 
-        if self.passage[self.last_correct_character] == char and self.error_string == 0:
-            # if there are no errors remaining and the entered key is correct
-            self.is_wrong = False
+        # If there are no remaining errors and the correct character was entered
+        if self.error_string == 0 and self.passage[self.last_correct_character] == char:
             self.last_correct_character += 1
+
+        # if the entered key is a backspace, delete an error if there is any
+        # the backspace keypress is not counted, so self.total is decremented here
         elif char == '\u007f':
-            # if the entered key is backspace, delete an error if there is any
             self.error_string = max(self.error_string-1, 0)
-            if self.error_string == 0:
-                # If there are no errors left, reset the wrong status
-                self.is_wrong = False
 
             # Backspace is not counted towards the total keys pressed
             self.total -= 1
-        else:
-            # A string of wrong characters have been typed
-            self.is_wrong = True
 
+        # A wrong character was entered
+        else:
             # The number of errors can only be as long as the passage left
             self.error_string = min(self.error_string+1, len(self.passage)-self.last_correct_character)
 
             # Total errors incremeneted (for statistics)
-            self.errors += 1
+            self.total_errors += 1
 
+        # Update the total number of characters
         self.total += 1
-
-        self.printStatus()
 
         return self.isOver()
 
@@ -77,7 +73,7 @@ class Client:
         """
 
         avg_time = time() - self.start
-        avg_speed = int((self.total - self.errors) / avg_time * (60 / 5))
+        avg_speed = int((self.total - self.total_errors) / avg_time * (60 / 5))
         return f"{avg_speed}WPM", f"{int(avg_time)}s"
 
     def printStatus(self):
@@ -91,7 +87,7 @@ class Client:
             return f"({filled_bars}{'◌'*(10 - int(percentile*10))})"
 
         speed, time_elapsed = self.statistics()
-        acc = int((self.total-self.errors)*100/self.total) if self.total else 100
+        acc = int((self.total-self.total_errors)*100/self.total) if self.total else 100
 
         self.table.clear_rows()
 
@@ -124,7 +120,7 @@ class Client:
             self.window.addstr(0, 0, self.passage[self.last_correct_character:][:width])
             self.window.scrollok(1)
 
-        if self.is_wrong:
+        if self.error_string > 0:
             # Glow in red if a wrong string of characters were typed
             self.window.addstr(
                 0, 0, self.passage[
@@ -152,10 +148,13 @@ class Client:
         return len(self.passage) == self.last_correct_character
 
     def initWindow(self):
+        """
+            Initializes a curses window with raw mode and colors.
+        """
         self.window = curses.initscr()
 
-        # sets cbreak and noecho modes to the terminal
-        curses.cbreak()
+        # sets raw and noecho modes to the terminal
+        curses.raw()
         curses.noecho()
         curses.curs_set(0)
 
@@ -174,15 +173,18 @@ class Client:
         def reset_curses_settings():
             curses.curs_set(1)
             curses.echo()
-            curses.nocbreak()
+            curses.noraw()
 
         register(reset_curses_settings)
 
     def serialize(self) -> str:
+        """
+            Serializes the client into a dictionary.
+        """
         return {
             "speed": self.statistics()[0],
             "progress": self.last_correct_character/len(self.passage),
-            "acc": int((self.total-self.errors)*100/self.total) if self.total else 100,
+            "acc": int((self.total-self.total_errors)*100/self.total) if self.total else 100,
             "id": self.id
         }
 
@@ -247,7 +249,7 @@ def writeResults(client: Client):
         line = [
             client.id,
             *client.statistics(),
-            str(int((client.total-client.errors)*100/client.total) if client.total else 100),
+            str(int((client.total-client.total_errors)*100/client.total) if client.total else 100),
             client.passage
         ]
         f.write(lines + "\t".join(line)+"\n")
@@ -306,7 +308,7 @@ if __name__ == "__main__":
                     else:
                         table.add_row([id, speed, tm, acc, ps])
                     previous_id = id
-                
+
                 stats_string = f"Average speed: {sum(speeds)//len(speeds)}WPM\nNo. of completed races: {len(speeds)}\n\n"
 
             cat_process = Popen(["echo", stats_string + table.get_string()], stdout=PIPE)
@@ -319,5 +321,3 @@ if __name__ == "__main__":
         client.initWindow()
         client = main(client)
         writeResults(client)
-
-    raise SystemExit
