@@ -15,7 +15,12 @@ from os import path
 script_path = path.dirname(path.realpath(__file__))
 
 
-class Client:
+class RaceClient:
+    """
+        Represents a Race Client.
+        Encapsulates a passage and statistics relevant to the race.
+    """
+
     def __init__(self, passage: str):
         self.passage = passage
 
@@ -28,7 +33,8 @@ class Client:
         self.start = time()
 
         self.table = PrettyTable()
-        self.table.field_names = ["SPEED", "PROGRESS", "ACCURACY", "TIME ELAPSED", "ID"]
+        self.table.field_names = [
+            "SPEED", "PROGRESS", "ACCURACY", "TIME ELAPSED", "ID"]
         self.table.set_style(PLAIN_COLUMNS)
 
     def typeCharacter(self, char: str) -> bool:
@@ -57,7 +63,8 @@ class Client:
         # A wrong character was entered
         else:
             # The number of errors can only be as long as the passage left
-            self.error_string = min(self.error_string+1, len(self.passage)-self.last_correct_character)
+            self.error_string = min(
+                self.error_string+1, len(self.passage)-self.last_correct_character)
 
             # Total errors incremeneted (for statistics)
             self.total_errors += 1
@@ -87,7 +94,8 @@ class Client:
             return f"({filled_bars}{'◌'*(10 - int(percentile*10))})"
 
         speed, time_elapsed = self.statistics()
-        acc = int((self.total-self.total_errors)*100/self.total) if self.total else 100
+        acc = int((self.total-self.total_errors)*100 /
+                  self.total) if self.total else 100
 
         self.table.clear_rows()
 
@@ -112,12 +120,14 @@ class Client:
 
         if self.isOver():
             # Print the full passage on screen
-            self.window.addstr(0, 0, self.passage, curses.color_pair(1) | curses.A_BOLD)
+            self.window.addstr(0, 0, self.passage,
+                               curses.color_pair(1) | curses.A_BOLD)
             self.window.scrollok(1)
         else:
             # Print only a section of the text, as long as the terminal's width
             offset = 0
-            self.window.addstr(0, 0, self.passage[self.last_correct_character:][:width])
+            self.window.addstr(
+                0, 0, self.passage[self.last_correct_character:][:width])
             self.window.scrollok(1)
 
         if self.error_string > 0:
@@ -192,16 +202,16 @@ class Client:
 def getRandomLine():
     from linecache import getline
     from subprocess import run, PIPE
-    lines = run(["wc", "-l", path.join(script_path, "passages.txt")], check=True, stdout=PIPE).stdout
+    lines = run(["wc", "-l", path.join(script_path, "passages.txt")],
+                check=True, stdout=PIPE).stdout
     lines = int(lines.decode().split()[0])
 
     return getline(path.join(script_path, "passages.txt"), randint(1, lines)).strip()
 
 
-def setupClient() -> Client:
+def setupClient() -> RaceClient:
     # Picking a random line from a file
     # The lines are cleaned up
-
     '''
     try:
         passage = choice(
@@ -212,13 +222,13 @@ def setupClient() -> Client:
     '''
 
     passage = getRandomLine()
-    client = Client(passage)
+    client = RaceClient(passage)
 
     # Return the instantiated client to play with
     return client
 
 
-def main(client: Client):
+def startRace(client: RaceClient):
     while True:
         # Main loop
 
@@ -236,7 +246,7 @@ def main(client: Client):
     return client
 
 
-def writeResults(client: Client):
+def writeResultsToFile(client: RaceClient):
     if not client.isOver():
         return
 
@@ -249,27 +259,74 @@ def writeResults(client: Client):
         line = [
             client.id,
             *client.statistics(),
-            str(int((client.total-client.total_errors)*100/client.total) if client.total else 100),
+            str(int((client.total-client.total_errors) *
+                    100/client.total) if client.total else 100),
             client.passage
         ]
         f.write(lines + "\t".join(line)+"\n")
 
 
+def displayHistory(client: RaceClient):
+    from subprocess import PIPE, Popen, run
+    from re import split
+
+    if path.exists(path.join(script_path, "tmp.dat")):
+        table = PrettyTable()
+        table.field_names = [
+            "Player Name",
+            "Speed",
+            "Time Taken",
+            "Accuracy",
+            "Passage\n"
+        ]
+        table.align = "l"
+        table.set_style(PLAIN_COLUMNS)
+
+        speeds, previous_id = [], None
+
+        with open(path.join(script_path, "tmp.dat")) as f:
+            for line in reversed(f.readlines()):
+                row = line.split("\t")
+                id, speed, _, _, _ = row
+                speeds.append(int(split('WPM$', speed)[0]))
+
+                if id == previous_id:
+                    row[0] = ""
+
+                previous_id = id
+                table.add_row(row)
+
+        final_string = ""
+        final_string += f"Average Speed: {sum(speeds)//len(speeds)}WPM\n"
+        final_string += f"Races completed: {len(speeds)}\n\n"
+        final_string += table.get_string()
+
+        echo_proces = Popen(["echo", final_string], stdout=PIPE)
+        run(["less", "-S"], stdin=echo_proces.stdout)
+
+    else:
+        print("No games have been played yet.")
+
+
 if __name__ == "__main__":
     cmd_args = ArgumentParser()
-    cmd_args.add_argument("--practice", "-p", help="enter practice mode (default)", action="store_true")
-    cmd_args.add_argument("--history", "-hi", help="view race history", action="store_true")
+    cmd_args.add_argument(
+        "--practice", "-p", help="enter practice mode (default)", action="store_true")
+    cmd_args.add_argument("--history", "-hi",
+                          help="view race history", action="store_true")
     cmd_args.add_argument("--name", help="set your username")
-    cmd_args.add_argument("--host", "-ho", help="host a multiplayer game", action="store_true")
-    cmd_args.add_argument("--client", "-c", help="connect to a multiplayer game", action="store_true")
+    cmd_args.add_argument(
+        "--host", "-ho", help="host a multiplayer game", action="store_true")
+    cmd_args.add_argument(
+        "--client", "-c", help="connect to a multiplayer game", action="store_true")
     cmd_args = cmd_args.parse_args()
 
     # initialize curses window and client instances
-    client = setupClient()
+    race_client = setupClient()
 
     if cmd_args.name:
         from json import dumps
-        client.id = cmd_args.name
+        race_client.id = cmd_args.name
         open(path.join(script_path, "session.json"), "w").write(
             dumps({"id": cmd_args.name})
         )
@@ -277,8 +334,9 @@ if __name__ == "__main__":
     else:
         from json import loads, dumps
         if path.exists(path.join(script_path, "session.json")):
-            session = loads(open(path.join(script_path, "session.json")).read())
-            client.id = session["id"]
+            session = loads(
+                open(path.join(script_path, "session.json")).read())
+            race_client.id = session["id"]
 
     if cmd_args.host:
         # Host mode; Setup a server to host the game
@@ -289,35 +347,10 @@ if __name__ == "__main__":
         pass
 
     elif cmd_args.history:
-        from subprocess import Popen, run, PIPE
-        from re import split
-        if path.exists(path.join(script_path, "tmp.dat")):
-            table = PrettyTable()
-            table.field_names = ["Player Name", "Speed", "Time Taken", "Accuracy", "Passage\n"]
-            table.align = "l"
-            table.set_style(PLAIN_COLUMNS)
-
-            speeds, previous_id = [], None
-
-            with open(path.join(script_path, "tmp.dat")) as f:
-                for line in reversed(f.readlines()):
-                    id, speed, tm, acc, ps = line.split("\t")
-                    speeds.append(int(split("WPM$", speed)[0]))
-                    if id == previous_id:
-                        table.add_row(["", speed, tm, acc, ps])
-                    else:
-                        table.add_row([id, speed, tm, acc, ps])
-                    previous_id = id
-
-                stats_string = f"Average speed: {sum(speeds)//len(speeds)}WPM\nNo. of completed races: {len(speeds)}\n\n"
-
-            cat_process = Popen(["echo", stats_string + table.get_string()], stdout=PIPE)
-            run(["less", "-S"], stdin=cat_process.stdout)
-        else:
-            print("You haven't played any games yet.")
+        displayHistory(race_client)
 
     else:
         # Practice mode
-        client.initWindow()
-        client = main(client)
-        writeResults(client)
+        race_client.initWindow()
+        client = startRace(race_client)
+        writeResultsToFile(client)
