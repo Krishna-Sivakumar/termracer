@@ -6,13 +6,9 @@
 from argparse import ArgumentParser
 from atexit import register
 import curses
-from datetime import timedelta
 from prettytable import PrettyTable, PLAIN_COLUMNS
-import recur
-from random import randint, choice
-from socketio.exceptions import ConnectionError
-from socketio import Client as WebSocketClient
-from time import time, sleep
+from random import randint
+from time import time
 
 
 from os import path
@@ -20,13 +16,13 @@ script_path = path.dirname(path.realpath(__file__))
 
 
 class Client:
-    def __init__(self, passage: str, socket: WebSocketClient = None):
+    def __init__(self, passage: str):
         self.passage = passage
 
-        self.socket = socket
         self.state = None
 
         self.total, self.errors = 0, 0
+        self.error_string = 0
         self.last_correct_character = 0
         self.is_wrong = False
         self.id = f"player{randint(1, 1000)}"
@@ -42,19 +38,36 @@ class Client:
             Returns true if the end of the passage has been reached.
         """
 
-        if self.passage[self.last_correct_character] == char:
+        if char == '\u0018':
+            # If ctrl + x is pressed, stop the race
+            return True
+
+        if self.passage[self.last_correct_character] == char and self.error_string == 0:
+            # if there are no errors remaining and the entered key is correct
             self.is_wrong = False
             self.last_correct_character += 1
+        elif char == '\u007f':
+            # if the entered key is backspace, delete an error if there is any
+            self.error_string = max(self.error_string-1, 0)
+            if self.error_string == 0:
+                # If there are no errors left, reset the wrong status
+                self.is_wrong = False
+
+            # Backspace is not counted towards the total keys pressed
+            self.total -= 1
         else:
+            # A string of wrong characters have been typed
             self.is_wrong = True
+
+            # The number of errors can only be as long as the passage left
+            self.error_string = min(self.error_string+1, len(self.passage)-self.last_correct_character)
+
+            # Total errors incremeneted (for statistics)
             self.errors += 1
 
         self.total += 1
 
         self.printStatus()
-
-        if self.socket is not None and self.socket.connected:
-            self.socket.send(self.serialize())
 
         return self.isOver()
 
@@ -92,17 +105,6 @@ class Client:
             ]
         )
 
-        if self.state is not None:
-            self.table.add_row(
-                [
-                    self.state["speed"],
-                    progress_bar(self.state["progress"]),
-                    f"{self.state['acc']}%",
-                    time_elapsed,
-                    self.state["id"]
-                ]
-            )
-
         # Clear the screen
         self.window.erase()
 
@@ -123,9 +125,11 @@ class Client:
             self.window.scrollok(1)
 
         if self.is_wrong:
-            # Glow in red if a wrong character was typed
+            # Glow in red if a wrong string of characters were typed
             self.window.addstr(
-                0, 0, self.passage[self.last_correct_character],
+                0, 0, self.passage[
+                    self.last_correct_character:self.last_correct_character+self.error_string
+                ],
                 curses.color_pair(2)
             )
 
@@ -133,6 +137,10 @@ class Client:
         for line in self.table.get_string().split("\n"):
             self.window.addstr(row_counter + offset, 0, "\t" + line[:width])
             row_counter += 1
+
+        row_counter += 1
+        self.window.addstr(row_counter + offset, 0, "Press ^X to exit")
+        row_counter += 1
 
         self.window.addstr(row_counter + 1 + offset, 0, "\n")
         self.window.refresh()
@@ -161,6 +169,8 @@ class Client:
         # Default text and background colors
         curses.init_pair(3, -1, -1)
 
+        self.window.nodelay(True)
+
         def reset_curses_settings():
             curses.curs_set(1)
             curses.echo()
@@ -175,11 +185,6 @@ class Client:
             "acc": int((self.total-self.errors)*100/self.total) if self.total else 100,
             "id": self.id
         }
-
-    def setState(self, data):
-        if self.state is None:
-            self.state = [data]
-        self.state = data
 
 
 def getRandomLine():
@@ -211,37 +216,18 @@ def setupClient() -> Client:
     return client
 
 
-def main(client: Client, client_socket=WebSocketClient()):
-    client.socket = client_socket
-    loop = recur.thread(timedelta(seconds=0.01), client.printStatus)
-    loop.start()
-
-    @client.socket.event
-    def message(data):
-        client.setState(data)
-
-    @client.socket.event
-    def stop_race(data=None):
-        client.socket.disconnect()
-        loop.stop()
-
+def main(client: Client):
     while True:
         # Main loop
-        char = client.window.getkey()
+
+        client.printStatus()
+
+        try:
+            char = client.window.getkey()
+        except curses.error:
+            continue
 
         if client.typeCharacter(char):
-            if client.socket.connected:
-                client.socket.emit("race_over", client.id)
-            else:
-                stop_race()
-            break
-
-        # if client.typeCharacter(char) or char == '\u0018':
-        if char == '\u0018':
-            if client.socket.connected:
-                client.socket.emit("force_stop", "")
-            else:
-                stop_race()
             break
 
     client.printStatus()
@@ -252,9 +238,9 @@ def writeResults(client: Client):
     if not client.isOver():
         return
 
-    try:
-        lines = open(path.join(script_path, "tmp.dat"), "r").read()
-    except FileNotFoundError:
+    if path.exists(path.join(script_path, "tmp.dat")):
+        lines = open(path.join(script_path, "tmp.dat")).read()
+    else:
         lines = ""
 
     with open(path.join(script_path, "tmp.dat"), "w") as f:
@@ -294,39 +280,11 @@ if __name__ == "__main__":
 
     if cmd_args.host:
         # Host mode; Setup a server to host the game
-
-        import server
-
-        srv = recur.runThread(server.main)
-        srv.start()
-
-        # Setup a client on the host's side
-        client_socket = WebSocketClient()
-        client_socket.connect("http://127.0.0.1:5000")
-        print("waiting for 1 player to connect...")
-
-        @client_socket.event
-        def start_game(data):
-            # Start the game when the server sends the signal to start.
-            print("the game is starting in a second!")
-            client.initWindow()
-            sleep(1)
-            main(client, client_socket)
+        pass
 
     elif cmd_args.client:
         # Client mode; Connects to the host via websockets
-        client_socket = WebSocketClient()
-        try:
-            client_socket.connect("http://127.0.0.1:5000")
-        except ConnectionError:
-            print("couldn't create a connection with the host.")
-
-        @client_socket.event
-        def start_game(data):
-            print("the game is starting in a second!")
-            client.initWindow()
-            sleep(1)
-            main(client, client_socket)
+        pass
 
     elif cmd_args.history:
         from subprocess import Popen, run, PIPE
@@ -339,16 +297,19 @@ if __name__ == "__main__":
 
             speeds, previous_id = [], None
 
-            for line in reversed(open(path.join(script_path, "tmp.dat")).readlines()):
-                id, speed, tm, acc, ps = line.split("\t")
-                speeds.append(int(split("WPM$", speed)[0]))
-                if id == previous_id:
-                    table.add_row(["", speed, tm, acc, ps])
-                else:
-                    table.add_row([id, speed, tm, acc, ps])
-                previous_id = id
+            with open(path.join(script_path, "tmp.dat")) as f:
+                for line in reversed(f.readlines()):
+                    id, speed, tm, acc, ps = line.split("\t")
+                    speeds.append(int(split("WPM$", speed)[0]))
+                    if id == previous_id:
+                        table.add_row(["", speed, tm, acc, ps])
+                    else:
+                        table.add_row([id, speed, tm, acc, ps])
+                    previous_id = id
+                
+                stats_string = f"Average speed: {sum(speeds)//len(speeds)}WPM\nNo. of completed races: {len(speeds)}\n\n"
 
-            cat_process = Popen(["echo", f"Average Speed: {sum(speeds)//len(speeds)}WPM\n\n" + table.get_string()], stdout=PIPE)
+            cat_process = Popen(["echo", stats_string + table.get_string()], stdout=PIPE)
             run(["less", "-S"], stdin=cat_process.stdout)
         else:
             print("You haven't played any games yet.")
