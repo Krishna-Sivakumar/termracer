@@ -6,20 +6,26 @@ from RaceClient import RaceClient
 
 from os import path
 script_path = path.dirname(path.realpath(__file__))
+temp_file_path = "tmp.dat"
+passages_file_path = path.join(script_path, "passages.txt")
 
 
-def getRandomLine():
+def getRandomLine(file_path):
     """
         Picks a random line from passages.txt.
     """
     from linecache import getline
     from subprocess import run, PIPE
     from random import randint
-    lines = run(["wc", "-l", path.join(script_path, "passages.txt")],
+    lines = run(["wc", "-l", file_path],
                 check=True, stdout=PIPE).stdout
     lines = int(lines.decode().split()[0])
 
-    return getline(path.join(script_path, "passages.txt"), randint(1, lines)).strip()
+    if lines == 0:
+        raise FileNotFoundError(
+            "Given file is empty. (Check if the lines are separated by newline characters)")
+
+    return getline((file_path), randint(1, lines)).strip()
 
 
 def setupClient() -> RaceClient:
@@ -27,7 +33,7 @@ def setupClient() -> RaceClient:
         Instantiates a RaceClient, picks a random passage, and returns it.
     """
 
-    passage = getRandomLine()
+    passage = getRandomLine(passages_file_path)
     client = RaceClient(passage)
 
     return client
@@ -54,6 +60,17 @@ def startRace(client: RaceClient):
     return client
 
 
+def getRacesFromFile(file_name: str):
+    """
+        Returns lines from a file as a list of strings.
+        The default file specified is tmp.dat.
+    """
+    lines = []
+    if path.exists(path.join(script_path, file_name)):
+        lines = open(path.join(script_path, file_name)).readlines()
+    return lines
+
+
 def writeResultsToFile(client: RaceClient):
     """
         Writes the statistics of the finished race into tmp.dat.
@@ -61,30 +78,38 @@ def writeResultsToFile(client: RaceClient):
     if not client.isOver():
         return
 
-    if path.exists(path.join(script_path, "tmp.dat")):
-        lines = open(path.join(script_path, "tmp.dat")).read()
-    else:
-        lines = ""
+    client_statistics = client.statistics()
 
-    with open(path.join(script_path, "tmp.dat"), "w") as f:
-        line = [
-            client.id,
-            *client.statistics(),
-            str(int((client.total-client.total_errors) *
-                    100/client.total) if client.total else 100),
-            client.passage
-        ]
-        f.write(lines + "\t".join(line)+"\n")
+    line = [
+        client.id,
+        f"{client_statistics['speed']}WPM",
+        f"{client_statistics['time_elapsed']}s",
+        f"{client_statistics['accuracy']}%",
+        client.passage
+    ]
+
+    file_path = path.join(script_path, temp_file_path)
+
+    if path.exists(file_path):
+        with open(file_path, "a+") as f:
+            f.write("\t".join(line)+"\n")
+    else:
+        with open(file_path, "w+") as f:
+            f.write("\t".join(line)+"\n")
 
 
 def displayHistory(client: RaceClient):
     """
         Reads racing history from tmp.dat and outputs it to less(1).
     """
-    from subprocess import PIPE, Popen, run
-    from re import split
+    lines = getRacesFromFile(temp_file_path)
 
-    if path.exists(path.join(script_path, "tmp.dat")):
+    if len(lines) > 0:
+        # Importing relevant functions and constants
+        from subprocess import PIPE, Popen, run
+        from re import split
+
+        # Setting up the table to display
         table = PrettyTable()
         table.field_names = [
             "Player Name",
@@ -98,17 +123,16 @@ def displayHistory(client: RaceClient):
 
         speeds, previous_id = [], None
 
-        with open(path.join(script_path, "tmp.dat")) as f:
-            for line in reversed(f.readlines()):
-                row = line.split("\t")
-                id, speed, _, _, _ = row
-                speeds.append(int(split('WPM$', speed)[0]))
+        for line in reversed(lines):
+            row = line.split("\t")
+            id, speed, _, _, passage = row
+            speeds.append(int(split('WPM$', speed)[0]))
 
-                if id == previous_id:
-                    row[0] = ""
+            if id == previous_id:
+                row[0] = ""
 
-                previous_id = id
-                table.add_row(row)
+            previous_id = id
+            table.add_row(row)
 
         final_string = ""
         final_string += f"Average Speed: {sum(speeds)//len(speeds)}WPM\n"
@@ -130,10 +154,23 @@ if __name__ == "__main__":
                           help="view race history", action="store_true")
     cmd_args.add_argument("--name", help="set your username")
     cmd_args.add_argument(
+        "--file", "-f", help="Choose lines from a custom file")
+    cmd_args.add_argument(
         "--host", "-ho", help="host a multiplayer game", action="store_true")
     cmd_args.add_argument(
         "--client", "-c", help="connect to a multiplayer game", action="store_true")
     cmd_args = cmd_args.parse_args()
+
+    if cmd_args.file:
+        file = cmd_args.file
+        if not path.isabs(file):
+            file = path.abspath(cmd_args.file)
+
+        if path.isfile(file):
+            passages_file_path = file
+        else:
+            raise FileNotFoundError(
+                f"{file}: No such file")
 
     # initialize curses window and client instances
     race_client = setupClient()

@@ -1,5 +1,6 @@
 from atexit import register
 import curses
+from typing import Dict
 from prettytable import PrettyTable, PLAIN_COLUMNS
 from random import randint
 from time import time
@@ -64,14 +65,23 @@ class RaceClient:
 
         return self.isOver()
 
-    def statistics(self) -> str:
+    def statistics(self) -> Dict[str, int]:
         """
-            Returns current race statistics as a tuple of strings.
+            Returns the current race statistics.
+            Dict Keys:
+            speed, time_elapsed, total_errors, total_characters_typed, accuracy
         """
 
         avg_time = time() - self.start
         avg_speed = int((self.total - self.total_errors) / avg_time * (60 / 5))
-        return f"{avg_speed}WPM", f"{int(avg_time)}s"
+        result = {
+            "speed": avg_speed,
+            "time_elapsed": int(avg_time),
+            "total_errors": self.total_errors,
+            "total_characters_typed": self.total,
+            "accuracy": int((self.total-self.total_errors)*100/self.total) if self.total else 100
+        }
+        return result
 
     def printStatus(self):
         """
@@ -83,18 +93,19 @@ class RaceClient:
             filled_bars = filling_character * int(percentile*10)
             return f"({filled_bars}{'◌'*(10 - int(percentile*10))})"
 
-        speed, time_elapsed = self.statistics()
-        acc = int((self.total-self.total_errors)*100 /
-                  self.total) if self.total else 100
+        statistics = self.statistics()
+        speed = statistics["speed"]
+        time_elapsed = statistics["time_elapsed"]
+        acc = statistics["accuracy"]
 
         self.table.clear_rows()
 
         self.table.add_row(
             [
-                speed,
+                f"{speed}WPM",
                 progress_bar(self.last_correct_character/len(self.passage)),
                 f"{acc}%",
-                time_elapsed,
+                f"{time_elapsed}s",
                 self.id,
             ]
         )
@@ -182,7 +193,7 @@ class RaceClient:
             Serializes the client into a dictionary.
         """
         return {
-            "speed": self.statistics()[0],
+            "speed": self.statistics()["speed"],
             "progress": self.last_correct_character/len(self.passage),
             "acc": int((self.total-self.total_errors)*100/self.total) if self.total else 100,
             "id": self.id
