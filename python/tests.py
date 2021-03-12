@@ -1,7 +1,6 @@
-from time import sleep
 import main
 from RaceClient import RaceClient, BACKSPACE, CTRLC
-from random import randint, random
+from random import randint
 import unittest
 
 
