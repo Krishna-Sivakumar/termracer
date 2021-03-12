@@ -5,8 +5,14 @@ from RaceClient import RaceClient
 
 
 from os import path
+
+# Geting the file path of this script
 script_path = path.dirname(path.realpath(__file__))
+
+# Path to the tmp storage file
 temp_file_path = "tmp.dat"
+
+# Path to the passages file
 passages_file_path = path.join(script_path, "passages.txt")
 
 
@@ -67,7 +73,8 @@ def getRacesFromFile(file_name: str):
     """
     lines = []
     if path.exists(path.join(script_path, file_name)):
-        lines = open(path.join(script_path, file_name)).readlines()
+        with open(path.join(script_path, file_name)) as f:
+            lines = f.readlines()
     return lines
 
 
@@ -139,8 +146,8 @@ def displayHistory(client: RaceClient):
         final_string += f"Races completed: {len(speeds)}\n\n"
         final_string += table.get_string()
 
-        echo_proces = Popen(["echo", final_string], stdout=PIPE)
-        run(["less", "-S"], stdin=echo_proces.stdout)
+        echo_process = Popen(["echo", final_string], stdout=PIPE)
+        run(["less", "-S"], stdin=echo_process.stdout)
 
     else:
         print("No games have been played yet.")

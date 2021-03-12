@@ -6,6 +6,17 @@ from random import randint
 from time import time
 
 
+BACKSPACE = "\u007f"
+CTRLW = "\u0017"
+CTRLC = "\u0003"
+
+
+def counter(init: int = 0, step: int = 1):
+    while True:
+        yield init
+        init += step
+
+
 class RaceClient:
     """
         Represents a Race Client.
@@ -35,8 +46,12 @@ class RaceClient:
             Returns True if the end of the passage has been reached.
         """
 
-        # If CTRL X is pressed, finish the race by returning True
-        if char == '\u0018':
+        # If the passage has been completed, return True
+        if self.isOver():
+            return True
+
+        # If CTRL C is pressed, finish the race by returning True
+        if char == CTRLC:
             return True
 
         # If the correct character is entered and there are no errors left
@@ -45,10 +60,15 @@ class RaceClient:
 
         # if the entered key is a backspace, delete an error if there is any
         # the backspace keypress is not counted, so total is decremented here
-        elif char == '\u007f':
+        elif char == BACKSPACE:
             self.undeleted_errors = max(self.undeleted_errors-1, 0)
 
             # Backspace is not counted towards the total keys pressed
+            self.total -= 1
+
+        # All undeleted errors are cleared with the CTRLW keypress
+        elif char == CTRLW:
+            self.undeleted_errors = 0
             self.total -= 1
 
         # A wrong character was entered
@@ -62,6 +82,8 @@ class RaceClient:
 
         # Update the total number of characters
         self.total += 1
+
+        self.printStatus()
 
         return self.isOver()
 
@@ -140,16 +162,18 @@ class RaceClient:
                 curses.color_pair(2)
             )
 
-        row_counter = 2
+        # Initialize row counter
+        row_counter = counter(2, 2)
         for line in self.table.get_string().split("\n"):
-            self.window.addstr(row_counter + offset, 0, "\t" + line[:width])
-            row_counter += 1
+            self.window.addstr(next(row_counter) + offset,
+                               0, "\t" + line[:width])
 
-        row_counter += 1
-        self.window.addstr(row_counter + offset, 0, "Press ^X to exit")
-        row_counter += 1
+        self.window.addstr(next(row_counter) + offset, 0,
+                           "Press ^W to clear errors")
 
-        self.window.addstr(row_counter + 1 + offset, 0, "\n")
+        self.window.addstr(next(row_counter) + offset, 0, "Press ^X to exit")
+
+        self.window.addstr(next(row_counter) + offset, 0, "\n")
         self.window.refresh()
 
     def isOver(self):
@@ -178,6 +202,8 @@ class RaceClient:
         curses.init_pair(2, -1, curses.COLOR_RED)
         # Default text and background colors
         curses.init_pair(3, -1, -1)
+        # Default text on a cyan background
+        curses.init_pair(4, -1, curses.COLOR_BLUE)
 
         self.window.nodelay(True)
 
