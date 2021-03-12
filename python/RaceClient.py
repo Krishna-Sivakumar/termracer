@@ -83,8 +83,6 @@ class RaceClient:
         # Update the total number of characters
         self.total += 1
 
-        self.printStatus()
-
         return self.isOver()
 
     def statistics(self) -> Dict[str, int]:
@@ -171,7 +169,7 @@ class RaceClient:
         self.window.addstr(next(row_counter) + offset, 0,
                            "Press ^W to clear errors")
 
-        self.window.addstr(next(row_counter) + offset, 0, "Press ^X to exit")
+        self.window.addstr(next(row_counter) + offset, 0, "Press ^C to exit")
 
         self.window.addstr(next(row_counter) + offset, 0, "\n")
         self.window.refresh()
