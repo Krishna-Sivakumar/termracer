@@ -83,6 +83,15 @@ class TestRaceClient(unittest.TestCase):
         # Checks if the client exits
         assert client.typeCharacter(CTRLC)
 
+    def testPassages(self):
+        import os.path
+        try:
+            assert os.path.exists(os.path.join(
+                main.script_path, "passages.txt"))
+        except AssertionError:
+            raise AssertionError(
+                "passages.txt must exist at the file directory")
+
 
 if __name__ == "__main__":
     unittest.main()
