@@ -132,7 +132,11 @@ def displayHistory(client: RaceClient):
 
         for line in reversed(lines):
             row = line.split("\t")
-            id, speed, _, _, passage = row
+            try:
+                id, speed, _, _, _ = row
+            except Exception as e:
+                print(f"at line {idx}, {line}: \n{e}")
+                continue
             speeds.append(int(split('WPM$', speed)[0]))
 
             if id == previous_id:
@@ -146,8 +150,12 @@ def displayHistory(client: RaceClient):
         final_string += f"Races completed: {len(speeds)}\n\n"
         final_string += table.get_string()
 
-        echo_process = Popen(["echo", final_string], stdout=PIPE)
+        with open("tmp.out", "w") as f:
+            f.write(final_string)
+
+        echo_process = Popen(["cat", "tmp.out"], stdout=PIPE)
         run(["less", "-S"], stdin=echo_process.stdout)
+        run(["rm", "tmp.out"])
 
     else:
         print("No games have been played yet.")
