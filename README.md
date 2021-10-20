@@ -4,7 +4,7 @@ This is a terminal-based typing speed tester written in Python!
 
 Only single-player mode is availabe right now, but multiplayer mode is on the way! (hopefully soon)
 
-Dependencies:
+#### Dependencies:
 1. prettytable
 
 <hr>
