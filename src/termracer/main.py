@@ -173,8 +173,6 @@ if __name__ == "__main__":
     cmd_args.add_argument(
         "--file", "-f", help="Choose lines from a custom file")
     cmd_args.add_argument(
-        "--host", "-ho", help="host a multiplayer game", action="store_true")
-    cmd_args.add_argument(
         "--client", "-c", help="connect to a multiplayer game", action="store_true")
     cmd_args = cmd_args.parse_args()
 
