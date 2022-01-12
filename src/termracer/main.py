@@ -28,8 +28,7 @@ def getRandomLine(file_path):
     lines = int(lines.decode().split()[0])
 
     if lines == 0:
-        raise FileNotFoundError(
-            "Given file is empty. (Check if the lines are separated by newline characters)")
+        raise FileNotFoundError("no lines found in file.")
 
     return getline((file_path), randint(1, lines)).strip()
 
@@ -56,6 +55,7 @@ def startRace(client: RaceClient):
 
         try:
             char = client.window.getkey()
+            client.dumpDataToServer()
         except curses.error:
             continue
 
@@ -130,7 +130,7 @@ def displayHistory(client: RaceClient):
 
         speeds, previous_id = [], None
 
-        for line in reversed(lines):
+        for idx, line in enumerate(reversed(lines)):
             row = line.split("\t")
             try:
                 id, speed, _, _, _ = row
@@ -164,8 +164,10 @@ def displayHistory(client: RaceClient):
 if __name__ == "__main__":
     cmd_args = ArgumentParser()
     cmd_args.add_argument(
-        "--practice", "-p", help="enter practice mode (default)", action="store_true")
-    cmd_args.add_argument("--history", "-hi",
+        "--practice", "-p",
+        help="enter practice mode (default)",
+        action="store_true")
+    cmd_args.add_argument("--history", "-i",
                           help="view race history", action="store_true")
     cmd_args.add_argument("--name", help="set your username")
     cmd_args.add_argument(
@@ -204,16 +206,12 @@ if __name__ == "__main__":
                 open(path.join(script_path, "session.json")).read())
             race_client.id = session["id"]
 
-    if cmd_args.host:
-        # Host mode; Setup a server to host the game
-        pass
+    if cmd_args.history:
+        displayHistory(race_client)
 
     elif cmd_args.client:
         # Client mode; Connects to the host via websockets
         pass
-
-    elif cmd_args.history:
-        displayHistory(race_client)
 
     else:
         # Practice mode

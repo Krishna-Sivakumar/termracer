@@ -86,8 +86,7 @@ class TestRaceClient(unittest.TestCase):
     def testPassages(self):
         import os.path
         try:
-            assert os.path.exists(os.path.join(
-                main.script_path, "passages.txt"))
+            assert os.path.exists(os.path.join(main.passages_file_path))
         except AssertionError:
             raise AssertionError(
                 "passages.txt must exist at the file directory")
