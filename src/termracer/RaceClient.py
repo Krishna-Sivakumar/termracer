@@ -75,7 +75,9 @@ class RaceClient:
         else:
             # The number of errors can only be as long as the passage left
             self.undeleted_errors = min(
-                self.undeleted_errors+1, len(self.passage)-self.last_correct_character)
+                self.undeleted_errors+1,
+                len(self.passage) - self.last_correct_character
+            )
 
             # Total errors incremeneted (for statistics)
             self.total_errors += 1
@@ -89,17 +91,28 @@ class RaceClient:
         """
             Returns the current race statistics.
             Dict Keys:
-            speed, time_elapsed, total_errors, total_characters_typed, accuracy
+            {
+                speed
+                time_elapsed
+                total_errors
+                total_characters_typed
+                accuracy
+            }
         """
 
         avg_time = time() - self.start
         avg_speed = int((self.total - self.total_errors) / avg_time * (60 / 5))
+
+        if self.total:
+            accuracy = int((self.total-self.total_errors)*100/self.total)
+        else:
+            accuracy = 100
         result = {
             "speed": avg_speed,
             "time_elapsed": int(avg_time),
             "total_errors": self.total_errors,
             "total_characters_typed": self.total,
-            "accuracy": int((self.total-self.total_errors)*100/self.total) if self.total else 100
+            "accuracy": accuracy
         }
         return result
 
@@ -130,6 +143,19 @@ class RaceClient:
             ]
         )
 
+        if self.state is not None:
+            for key, val in self.state.items():
+                if not key == self.id:
+                    self.table.add_row(
+                        [
+                            f"{val['speed']}WPM",
+                            progress_bar(val['progress']),
+                            f"{val['accuracy']}%",
+                            f"{val['time_elapsed']}s",
+                            key
+                        ]
+                    )
+
         # Clear the screen
         self.window.erase()
 
@@ -153,10 +179,9 @@ class RaceClient:
 
         if self.undeleted_errors > 0:
             # Glow in red if a wrong string of characters were typed
+            lcc, ude = self.last_correct_character, self.undeleted_errors
             self.window.addstr(
-                0, 0, self.passage[
-                    self.last_correct_character:self.last_correct_character+self.undeleted_errors
-                ],
+                0, 0, self.passage[lcc:lcc+ude],
                 curses.color_pair(2)
             )
 
@@ -164,7 +189,7 @@ class RaceClient:
         row_counter = counter(2, 2)
         for line in self.table.get_string().split("\n"):
             self.window.addstr(next(row_counter) + offset,
-                               0, "\t" + line[:width])
+                               0, f"{' ' * 4}{line}"[:width])
 
         self.window.addstr(next(row_counter) + offset, 0,
                            "Press ^W to clear errors")
@@ -212,13 +237,34 @@ class RaceClient:
 
         register(reset_curses_settings)
 
-    def serialize(self) -> str:
+    def serialize(self):
         """
-            Serializes the client into a dictionary.
+            Serializes the statistical info into a dictionary.
+            {
+                speed
+                time_elapsed
+                total_errors
+                total_characters_typed
+                accuracy
+
+                progress
+                id
+            }
         """
-        return {
-            "speed": self.statistics()["speed"],
+
+        serial_result = self.statistics()
+        serial_result.update({
             "progress": self.last_correct_character/len(self.passage),
-            "acc": int((self.total-self.total_errors)*100/self.total) if self.total else 100,
-            "id": self.id
-        }
+            "id": self.id,
+        })
+
+        return serial_result
+
+    def setSocket(self, socket):
+        pass
+
+    def dumpDataToServer(self):
+        pass
+
+    def sendTerminationMessage(self):
+        pass
