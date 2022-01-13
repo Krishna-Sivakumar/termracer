@@ -1,1 +1,4 @@
-export const onConnection = "connection";
+export const event = {
+    connection: "connection",
+    message: "message"
+}
