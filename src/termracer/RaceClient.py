@@ -1,5 +1,6 @@
 from atexit import register
 import curses
+import curses.ascii
 from typing import Dict
 from prettytable import PrettyTable, PLAIN_COLUMNS
 from random import randint
@@ -9,6 +10,7 @@ from time import time
 BACKSPACE = "\u007f"
 CTRLW = "\u0017"
 CTRLC = "\u0003"
+CMDBACKSPACE = ("\x1b", "w")
 
 
 def counter(init: int = 0, step: int = 1):
@@ -39,6 +41,13 @@ class RaceClient:
             "SPEED", "PROGRESS", "ACCURACY", "TIME ELAPSED", "ID"]
         self.table.set_style(PLAIN_COLUMNS)
 
+        self.clear_bit = False
+
+        #
+        self.tokens = self.passage.split()
+        self.current_token = 0
+        self.current_character = 0
+
     def typeCharacter(self, char: str) -> bool:
         """
             Enters a character into the passage,
@@ -54,22 +63,44 @@ class RaceClient:
         if char == CTRLC:
             return True
 
-        # If the correct character is entered and there are no errors left
-        if self.passage[self.last_correct_character] == char and self.undeleted_errors == 0:
-            self.last_correct_character += 1
+        current_token = self.tokens[self.current_token]
 
-        # if the entered key is a backspace, delete an error if there is any
+        # If space is entered after a word has been completed and there are no errors left
+        if self.undeleted_errors == 0 and ( len(current_token) == self.current_character and char == " " ):
+            self.last_correct_character += len(current_token) + 1
+            self.current_token += 1
+            self.current_character = 0
+
+        # If the correct character is entered and there are no errors left
+        elif self.undeleted_errors == 0 and ( self.current_character < len(current_token) and current_token[self.current_character] == char ):
+            self.current_character += 1
+
+        # if the entered key is a backspace, delete an error if there is any and also push the current character back
         # the backspace keypress is not counted, so total is decremented here
         elif char == BACKSPACE:
+            if (self.undeleted_errors == 0):
+                self.current_character = max(self.current_character-1,0)
+
             self.undeleted_errors = max(self.undeleted_errors-1, 0)
 
             # Backspace is not counted towards the total keys pressed
             self.total -= 1
 
         # All undeleted errors are cleared with the CTRLW keypress
+        elif self.clear_bit:
+            if char == CMDBACKSPACE[1]:
+                self.undeleted_errors = 0
+                self.current_character = 0
+                self.total -= 1
+            self.clear_bit = False
+
         elif char == CTRLW:
             self.undeleted_errors = 0
+            self.current_character = 0
             self.total -= 1
+
+        elif char == CMDBACKSPACE[0]:
+            self.clear_bit = True
 
         # A wrong character was entered
         else:
@@ -173,15 +204,15 @@ class RaceClient:
         else:
             # Print only a section of the text, as long as the terminal's width
             offset = 0
-            self.window.addstr(
-                0, 0, self.passage[self.last_correct_character:][:width])
+            self.window.addstr(0, 0, self.passage[self.last_correct_character:self.last_correct_character+self.current_character][:width], curses.color_pair(1))
+            self.window.addstr(0, self.current_character, self.passage[self.last_correct_character+self.current_character:][:width - self.current_character])
             self.window.scrollok(1)
 
         if self.undeleted_errors > 0:
             # Glow in red if a wrong string of characters were typed
-            lcc, ude = self.last_correct_character, self.undeleted_errors
+            lcc, ude, cc = self.last_correct_character, self.undeleted_errors, self.current_character
             self.window.addstr(
-                0, 0, self.passage[lcc:lcc+ude],
+                0, cc, self.passage[lcc+cc:lcc+cc+ude][:width],
                 curses.color_pair(2)
             )
 
@@ -203,7 +234,7 @@ class RaceClient:
         """
             Returns true if the end of the passage has been reached.
         """
-        return len(self.passage) == self.last_correct_character
+        return ( self.current_token == len(self.tokens) - 1 and self.current_character == len(self.tokens[self.current_token]) )
 
     def initWindow(self):
         """
@@ -225,8 +256,8 @@ class RaceClient:
         curses.init_pair(2, -1, curses.COLOR_RED)
         # Default text and background colors
         curses.init_pair(3, -1, -1)
-        # Default text on a cyan background
-        curses.init_pair(4, -1, curses.COLOR_BLUE)
+        # Default text on a green background
+        curses.init_pair(4, -1, curses.COLOR_GREEN)
 
         self.window.nodelay(True)
 
